@@ -30,15 +30,14 @@ import { logsErrorMessage } from "@/utils/common";
 import { getFunctionErrorMessage } from "@/utils/zincutils";
 import { useI18n } from "vue-i18n";
 import { convertDateToTimestamp } from "@/utils/date";
+import { initializeAggregation, aggregatePageResults } from "@/services/incrementalAggregation";
+import { PerformanceMonitor } from "@/services/performanceMonitor";
 
 export const useSearchResponseHandler = () => {
-  const { showErrorNotification, showCancelSearchNotification } =
-    useNotifications();
-  const { fnParsedSQL, hasAggregation, removeTraceId, updateUrlQueryParams } =
-    logsUtils();
+  const { showErrorNotification, showCancelSearchNotification } = useNotifications();
+  const { fnParsedSQL, hasAggregation, removeTraceId, updateUrlQueryParams } = logsUtils();
 
-  const { getHistogramTitle, generateHistogramData, resetHistogramWithError } =
-    useHistogram();
+  const { getHistogramTitle, generateHistogramData, resetHistogramWithError } = useHistogram();
 
   const { refreshPagination } = useSearchPagination();
 
@@ -63,6 +62,9 @@ export const useSearchResponseHandler = () => {
     filterHitsColumns,
     resetFieldValues,
   } = useStreamFields();
+
+  // Initialize performance monitor
+  const performanceMonitor = new PerformanceMonitor();
 
   const handleSearchResponse = (
     payload: WebSocketSearchPayload,
@@ -171,35 +173,54 @@ export const useSearchResponseHandler = () => {
     }
   };
 
-  const handleStreamingHits = (
+  const handleStreamingHits = async (
     payload: WebSocketSearchPayload,
     response: WebSocketSearchResponse,
     isPagination: boolean,
     appendResult: boolean = false,
   ) => {
-    if (
-      (isPagination && searchPartitionMap[payload.traceId].partition === 1) ||
-      !appendResult
-    ) {
-      searchObj.data.queryResults.hits = response.content.results.hits;
-    } else if (appendResult) {
-      searchObj.data.queryResults.hits.push(...response.content.results.hits);
-    }
+    try {
+      let newHits = response.content.results.hits;
+      let allHits = newHits;
 
-    if (searchObj.meta.refreshInterval == 0) {
-      updatePageCountTotal(
-        payload.queryReq,
-        response.content.results.hits.length,
-        searchObj.data.queryResults.hits.length,
-      );
-      trimPageCountExtraHit(
-        payload.queryReq,
-        searchObj.data.queryResults.hits.length,
-      );
-    }
+      if (
+        (isPagination && searchPartitionMap[payload.traceId].partition === 1) ||
+        !appendResult
+      ) {
+        searchObj.data.queryResults.hits = newHits;
+      } else if (appendResult) {
+        searchObj.data.queryResults.hits.push(...newHits);
+        allHits = searchObj.data.queryResults.hits;
+      }
 
-    refreshPagination(true);
-    processPostPaginationData();
+      // Incremental aggregation with performance monitoring
+      if (!searchObj.data.aggregationResult) {
+        searchObj.data.aggregationResult = initializeAggregation();
+      }
+      await performanceMonitor.monitorAggregation(
+        aggregatePageResults,
+        searchObj.data.aggregationResult,
+        newHits
+      );
+
+      if (searchObj.meta.refreshInterval == 0) {
+        updatePageCountTotal(
+          payload.queryReq,
+          newHits.length,
+          allHits.length,
+        );
+        trimPageCountExtraHit(
+          payload.queryReq,
+          allHits.length,
+        );
+      }
+
+      refreshPagination(true);
+      processPostPaginationData();
+    } catch (error) {
+      console.error('Error in handleStreamingHits:', error);
+      // Handle error appropriately
+    }
   };
 
   const processPostPaginationData = () => {

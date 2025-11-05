@@ -18,6 +18,7 @@ import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 // import { useI18n } from "vue-i18n";
 import type { SearchRequestPayload } from "@/ts/interfaces";
+import { AggregationResult } from "@/services/incrementalAggregation";
 import {
   DEFAULT_LOGS_CONFIG,
   DEFAULT_SEARCH_DEBUG_DATA,
@@ -73,6 +74,7 @@ interface SearchObjectData {
   transforms: any[];
   resultGrid: ResultGrid;
   searchAround: SearchAroundData;
+  aggregationResult?: AggregationResult;
 }
 
 interface SearchObject {
