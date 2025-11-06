@@ -76,6 +76,8 @@ pub struct Alert {
     pub last_edited_by: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deduplication: Option<DeduplicationConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panel_id: Option<String>,
 }
 
 impl PartialEq for Alert {
@@ -109,6 +111,7 @@ impl Default for Alert {
             last_edited_by: None,
             last_satisfied_at: None,
             deduplication: None,
+            panel_id: None,
         }
     }
 }
